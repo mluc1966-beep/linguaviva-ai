@@ -1,0 +1,13 @@
+name = "linguaviva-free-api"
+main = "worker.js"
+compatibility_date = "2026-09-28"
+
+[vars]
+ALLOWED_ORIGIN = "https://TUO-USERNAME.github.io"
+GEMINI_TEXT_MODEL = "gemini-3.5-flash-lite"
+GEMINI_LIVE_MODEL = "gemini-3.8-live"
+GEMINI_TTS_MODEL = "gemini-3.8-flash-lite-tts"
+
+# NON mettere GEMINI_API_KEY qui.
+# Impostala come secret nel dashboard Cloudflare oppure con:
+# npx wrangler secret put GEMINI_API_KEY
