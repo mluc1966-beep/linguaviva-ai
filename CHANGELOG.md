@@ -1,13 +1,15 @@
 # Changelog
 
-## v1.0 — 2026-09-27
-- Listening-first adattivo.
-- Conversazione AI con testo nascosto.
-- Valutazione comprensione e dettato percettivo.
-- Quaderno automatico errori.
-- Mini-lezioni grammaticali personalizzate.
-- Pronuncia assistita con misura di intelligibilità dichiarata.
-- TTS AI con fallback dispositivo.
-- Inglese, francese, spagnolo e tedesco.
-- PWA installabile.
-- Backend Cloudflare Worker con secret API e CORS.
+## 1.1 FREE — 2026-09-28
+- Rimossa ogni dipendenza da OpenAI API.
+- Gemini Free Tier come motore AI.
+- Nuovo London Live audio-to-audio con `gemini-3.8-live`.
+- Token effimeri per non esporre la chiave Gemini nel browser.
+- Selezione automatica di una voce catalogo `en-GB` con accento `British` quando disponibile.
+- Teacher Mode a fine conversazione con correzioni, espressioni utili e focus successivo.
+- TTS degli esercizi con `gemini-3.8-flash-lite-tts`.
+- Analisi testuale con `gemini-3.5-flash-lite`.
+- PWA aggiornata a v1.1 FREE.
+
+## 1.0
+- MVP completo con listening adattivo, conversazione, pronuncia, grammatica e quaderno errori.

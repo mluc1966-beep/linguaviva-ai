@@ -16,7 +16,7 @@ const LANGS = {
 const DEFAULTS = {
   backendUrl:'', language:'en', locale:'en-GB', level:'B1', speed:1,
   correctionMode:'delayed', dailyGoal:15, userName:'', listeningDifficulty:2,
-  hideAiText:true, aiVoice:true
+  hideAiText:true, aiVoice:true, voice:'', londonStyle:'natural'
 };
 const DEFAULT_STATS = {listeningAttempts:0,listeningCorrect:0,listeningScoreSum:0,conversationTurns:0,hints:0,reveals:0,slowPlays:0,lastStudyDate:'',streak:0,sessions:0};
 const SAMPLE = {
@@ -83,9 +83,9 @@ function speak(text, rate=settings.speed, locale=settings.locale){
 async function playAudioText(text, rate=settings.speed, locale=settings.locale){
   if(settings.aiVoice && settings.backendUrl){
     try{
-      const key=`${text}__${locale}`;
+      const key=`${text}__${locale}__${settings.voice||''}`;
       let payload=audioCache.get(key);
-      if(!payload){payload=await api('tts',{text,locale});audioCache.set(key,payload);}
+      if(!payload){payload=await api('tts',{text,locale,voice:settings.voice||''});audioCache.set(key,payload);}
       const bytes=Uint8Array.from(atob(payload.audioBase64),c=>c.charCodeAt(0));
       const blob=new Blob([bytes],{type:payload.mime||'audio/mpeg'});
       const url=URL.createObjectURL(blob); const audio=new Audio(url); audio.playbackRate=rate;
@@ -122,7 +122,7 @@ function render(){
 }
 
 function renderHome(){
-  const backend = settings.backendUrl ? '<span class="pill good"><span class="status-dot ok"></span> AI collegata</span>' : '<span class="pill warn"><span class="status-dot"></span> Configura backend</span>';
+  const backend = settings.backendUrl ? '<span class="pill good"><span class="status-dot ok"></span> Gemini Free collegato</span>' : '<span class="pill warn"><span class="status-dot"></span> Configura backend</span>';
   $('#app').innerHTML=`
     <section class="hero">
       <div class="kicker" style="color:#93c5fd">${esc(LANGS[settings.language].name)} · ${settings.level}</div>
@@ -155,7 +155,7 @@ function renderHome(){
       <div class="card"><h3>🔤 Pronuncia</h3><p class="muted">Ascolta, ripeti e controlla se la frase viene riconosciuta correttamente.</p><button class="secondary" id="openPron">Allenati</button></div>
       <div class="card"><h3>🎓 Grammatica dai tuoi errori</h3><p class="muted">Trasforma le correzioni reali in una mini-lezione personale.</p><button class="secondary" id="openGrammar">Crea lezione</button></div>
     </div>
-    ${!settings.backendUrl?`<div class="notice warning" style="margin-top:14px"><strong>Modalità locale attiva.</strong> Puoi provare audio e interfaccia; per generazione AI, valutazioni e conversazione apri Impostazioni e inserisci l'URL del backend Cloudflare Worker incluso nel pacchetto.</div>`:''}
+    ${!settings.backendUrl?`<div class="notice warning" style="margin-top:14px"><strong>Modalità locale attiva.</strong> Per London Live, correzioni e audio naturale collega il backend gratuito Gemini nelle Impostazioni.</div>`:''}
   `;
   $('#startListening').onclick=()=>setRoute('listening');
   $('#startConversation').onclick=()=>setRoute('conversation');
@@ -358,7 +358,7 @@ async function startPronunciation(){
   }
   $('#app').innerHTML='<div class="card audio-stage"><div class="audio-orb speaking">…</div><h2>Preparo la frase</h2></div>';
   try{
-    pronunciation=await api('pronunciation_generate',{language:settings.language,level:settings.level,recentErrors:errors.slice(0,6)});
+    pronunciation=await api('pronunciation_generate',{language:settings.language,locale:settings.locale,level:settings.level,recentErrors:errors.slice(0,6)});
     renderPronunciation(); setTimeout(()=>playAudioText(pronunciation.text,settings.speed,settings.locale),150);
   }catch(e){showFatal('Non riesco a creare l’esercizio di pronuncia',e)}
 }
@@ -409,13 +409,14 @@ function renderSettings(){
       <div class="field"><label>Voce / variante</label><select id="sLocale">${lang.accents.map(([v,n])=>`<option value="${v}" ${v===settings.locale?'selected':''}>${n}</option>`).join('')}</select></div>
       <div class="field"><label>Velocità audio</label><div class="range-line"><input id="sSpeed" type="range" min="0.65" max="1.2" step="0.05" value="${settings.speed}"><strong id="speedVal">${Number(settings.speed).toFixed(2)}×</strong></div></div>
       <div class="field"><label><input type="checkbox" id="sHide" ${settings.hideAiText?'checked':''}> Nascondi il testo dell'AI durante la conversazione</label></div>
-      <div class="field"><label><input type="checkbox" id="sAiVoice" ${settings.aiVoice?'checked':''}> Usa voce AI naturale (se il backend è collegato)</label></div>
+      <div class="field"><label><input type="checkbox" id="sAiVoice" ${settings.aiVoice?'checked':''}> Usa voce Gemini naturale (free tier)</label></div>
+      <div class="field"><label>Voce britannica Gemini</label><input id="sVoice" value="${esc(settings.voice||'')}" placeholder="automatico: seleziona una voce en-GB British"><div class="row" style="margin-top:8px"><button class="secondary" id="findBritishVoice" type="button">Trova voce britannica</button><span class="muted" id="voiceStatus"></span></div></div>
     </div>
     <div class="section-title"><h2>Backend AI</h2></div>
     <div class="card stack">
       <div class="field"><label>URL del backend Cloudflare Worker</label><input id="sBackend" type="url" value="${esc(settings.backendUrl)}" placeholder="https://linguaviva-api.TUO-NOME.workers.dev"></div>
       <div class="row"><button class="secondary" id="testBackend">Verifica collegamento</button><span id="backendStatus" class="muted"></span></div>
-      <div class="notice">La chiave OpenAI non va inserita qui. Rimane nelle <strong>secret del Worker</strong> del backend. La pagina GitHub resta quindi pubblicabile senza esporre segreti.</div>
+      <div class="notice">La chiave Gemini non va inserita qui. Rimane nel <strong>secret GEMINI_API_KEY</strong> del Worker. Se non abiliti la fatturazione nel progetto Google AI, al raggiungimento della quota gratuita l'app si ferma invece di generare costi.</div>
     </div>
     <div class="row between" style="margin-top:16px"><button class="danger" id="resetAll">Azzera dati locali</button><button class="primary" id="saveSettings">Salva</button></div>`;
   $('#sLang').onchange=e=>{
@@ -423,12 +424,17 @@ function renderSettings(){
   };
   $('#sSpeed').oninput=e=>$('#speedVal').textContent=`${Number(e.target.value).toFixed(2)}×`;
   $('#saveSettings').onclick=()=>{
-    const language=$('#sLang').value; settings={...settings,language,level:$('#sLevel').value,locale:$('#sLocale').value,speed:Number($('#sSpeed').value),hideAiText:$('#sHide').checked,aiVoice:$('#sAiVoice').checked,backendUrl:$('#sBackend').value.trim()};saveAll();alert('Impostazioni salvate.');renderSettings();
+    const language=$('#sLang').value; settings={...settings,language,level:$('#sLevel').value,locale:$('#sLocale').value,speed:Number($('#sSpeed').value),hideAiText:$('#sHide').checked,aiVoice:$('#sAiVoice').checked,voice:($('#sVoice')?.value||'').trim(),backendUrl:$('#sBackend').value.trim()};saveAll();alert('Impostazioni salvate.');renderSettings();
   };
   $('#testBackend').onclick=async()=>{
     const st=$('#backendStatus'); const candidate=$('#sBackend').value.trim(); if(!candidate)return st.textContent='Inserisci prima un URL.';
     const old=settings.backendUrl;settings.backendUrl=candidate;st.textContent='Verifico…';
     try{const d=await api('health');st.textContent=`✓ ${d.message||'Backend collegato'}`;}catch(e){st.textContent=`✗ ${e.message||e}`;}finally{settings.backendUrl=old}
+  };
+  if($('#findBritishVoice'))$('#findBritishVoice').onclick=async()=>{
+    const st=$('#voiceStatus');const candidate=$('#sBackend').value.trim();if(!candidate)return st.textContent='Configura prima il backend.';
+    const old=settings.backendUrl;settings.backendUrl=candidate;st.textContent='Cerco…';
+    try{const d=await api('british_voices');const v=d.voices?.[0];if(!v)throw new Error('Nessuna voce en-GB British trovata.');$('#sVoice').value=v.id;st.textContent=`✓ ${v.name||v.id} · ${v.accent||'British'}`;}catch(e){st.textContent=`✗ ${e.message||e}`;}finally{settings.backendUrl=old}
   };
   $('#resetAll').onclick=()=>{if(confirm('Azzera progressi, conversazioni ed errori su questo dispositivo?')){['settings','stats','errors','conversation'].forEach(k=>localStorage.removeItem(`lv_${k}`));location.reload()}};
 }
