@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="LinguaViva AI - coach linguistico listening-first" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>LinguaViva AI</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">LV</div>
+        <div>
+          <strong>LinguaViva AI</strong>
+          <span>Listening-first language coach · v1.0</span>
+        </div>
+      </div>
+      <button id="installBtn" class="ghost hidden">Installa</button>
+    </header>
+
+    <main id="app"></main>
+
+    <nav class="bottom-nav" aria-label="Navigazione principale">
+      <button data-route="home" class="nav-btn active"><span>⌂</span><small>Home</small></button>
+      <button data-route="listening" class="nav-btn"><span>🎧</span><small>Listening</small></button>
+      <button data-route="conversation" class="nav-btn"><span>🗣</span><small>Parla</small></button>
+      <button data-route="notebook" class="nav-btn"><span>📘</span><small>Errori</small></button>
+      <button data-route="settings" class="nav-btn"><span>⚙</span><small>Impostazioni</small></button>
+    </nav>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
