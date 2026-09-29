@@ -3,6 +3,10 @@
   "name": "linguaviva-free-api",
   "main": "worker.js",
   "compatibility_date": "2026-09-29",
+  "keep_vars": true,
+  "secrets": {
+    "required": ["GEMINI_API_KEY"]
+  },
   "vars": {
     "ALLOWED_ORIGIN": "https://mluc1966-beep.github.io"
   }
