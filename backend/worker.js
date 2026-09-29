@@ -91,11 +91,14 @@ async function askJSON(env, systemInstruction, prompt, maxOutputTokens=1200){
 async function liveToken(p,env){
   const now=Date.now();
   const model=env.GEMINI_LIVE_MODEL || DEFAULT_LIVE_MODEL;
+  // Use an unconstrained ephemeral token. The current Gemini v1beta
+  // provisioning endpoint accepts the base token fields reliably; the Live
+  // model and session configuration are sent by the browser in the first
+  // WebSocket setup message. The token is still single-use and short-lived.
   const body={
     uses:1,
     expireTime:new Date(now+30*60*1000).toISOString(),
-    newSessionExpireTime:new Date(now+60*1000).toISOString(),
-    liveConnectConstraints:{model:`models/${model}`}
+    newSessionExpireTime:new Date(now+60*1000).toISOString()
   };
   const res=await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens',{
     method:'POST',headers:{'x-goog-api-key':env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)
