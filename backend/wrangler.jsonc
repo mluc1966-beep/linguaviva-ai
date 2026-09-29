@@ -2,5 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "linguaviva-free-api",
   "main": "worker.js",
-  "compatibility_date": "2026-09-29"
+  "compatibility_date": "2026-09-29",
+  "vars": {
+    "ALLOWED_ORIGIN": "https://mluc1966-beep.github.io"
+  }
 }
