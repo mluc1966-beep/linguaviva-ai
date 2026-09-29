@@ -1,8 +1,32 @@
-// LinguaViva v1.1.2 - London Live hotfix
-// Loaded after live.js. It requests microphone permission before any network call,
-// then connects to Gemini Live with clearer diagnostics.
+// LinguaViva v1.1.3 - London Live via official Google GenAI SDK
+// Uses the official @google/genai SDK with the short-lived Gemini token.
+// The SDK version is pinned to avoid unexpected breaking changes.
 
-startLondonLive = async function startLondonLiveFixed(){
+const LV_GENAI_SDK_URL = 'https://esm.sh/@google/genai@2.24.0?bundle';
+
+cleanupLive = async function cleanupLiveSdk(){
+  if(!liveState) return;
+  stopQueuedLiveAudio();
+
+  if(liveState.connectTimer){
+    clearTimeout(liveState.connectTimer);
+    liveState.connectTimer=null;
+  }
+
+  try{
+    if(liveState.processor){
+      liveState.processor.onaudioprocess=null;
+      liveState.processor.disconnect();
+    }
+  }catch{}
+  try{ liveState.mediaSource?.disconnect(); }catch{}
+  try{ liveState.silent?.disconnect(); }catch{}
+  try{ liveState.mediaStream?.getTracks().forEach(t=>t.stop()); }catch{}
+  try{ liveState.session?.close(); }catch{}
+  try{ await liveState.audioContext?.close(); }catch{}
+};
+
+startLondonLive = async function startLondonLiveSdk(){
   if(!settings.backendUrl){
     alert('Prima collega il backend gratuito Gemini nelle Impostazioni.');
     setRoute('settings');
@@ -12,25 +36,29 @@ startLondonLive = async function startLondonLiveFixed(){
   lastLiveReview=null;
   lastLiveTurns=[];
   liveShowTranscript=false;
+
   liveState={
-    active:true, ready:false, speaking:false,
-    status:'Richiedo accesso al microfono…',
-    turns:[], currentUser:'', currentAi:'',
-    sources:new Set(), nextPlayTime:0
+    active:true,
+    ready:false,
+    speaking:false,
+    status:'Attivo il microfono…',
+    turns:[],
+    currentUser:'',
+    currentAi:'',
+    sources:new Set(),
+    nextPlayTime:0
   };
+
   liveStartedAt=Date.now();
   renderConversation();
   startLiveTimer();
 
   try{
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      throw new Error('Questo browser non consente l’accesso al microfono tramite WebRTC.');
+    if(!navigator.mediaDevices?.getUserMedia){
+      throw new Error('Questo browser non consente l’accesso al microfono.');
     }
 
-    // IMPORTANT: request mic immediately from the user's tap.
-    liveState.status='Consenti l’uso del microfono…';
-    updateLiveUI();
-
+    // 1) Microfono: viene richiesto direttamente dal tap dell'utente.
     const stream=await navigator.mediaDevices.getUserMedia({
       audio:{
         channelCount:1,
@@ -40,11 +68,11 @@ startLondonLive = async function startLondonLiveFixed(){
       },
       video:false
     });
-
     liveState.mediaStream=stream;
-    liveState.status='Microfono attivo · preparo London Live…';
+    liveState.status='Microfono attivo · preparo Gemini…';
     updateLiveUI();
 
+    // 2) Token temporaneo dal nostro Worker.
     const tokenData=await api('live_token',{
       locale:settings.locale,
       voice:settings.voice || 'Kore'
@@ -55,6 +83,17 @@ startLondonLive = async function startLondonLiveFixed(){
       saveAll();
     }
 
+    // 3) Carica l'SDK ufficiale Google, versione bloccata.
+    liveState.status='Carico il motore Gemini Live…';
+    updateLiveUI();
+
+    const { GoogleGenAI } = await import(LV_GENAI_SDK_URL);
+    const ai = new GoogleGenAI({
+      apiKey: tokenData.token
+    });
+    liveState.ai=ai;
+
+    // 4) Prepara audio input/output.
     const AC=window.AudioContext || window.webkitAudioContext;
     if(!AC) throw new Error('Web Audio non supportato da questo browser.');
 
@@ -76,98 +115,130 @@ startLondonLive = async function startLondonLiveFixed(){
     processor.connect(silent);
     silent.connect(ctx.destination);
 
+    liveState.status='Collegamento a Gemini Live…';
+    updateLiveUI();
+
+    // 5) Connessione tramite SDK ufficiale.
+    const session=await ai.live.connect({
+      model: tokenData.model || 'gemini-3.8-live',
+      config:{
+        responseModalities:['AUDIO'],
+        speechConfig:{
+          voiceConfig:{
+            prebuiltVoiceConfig:{
+              voiceName:settings.voice || tokenData.voice || 'Kore'
+            }
+          }
+        },
+        systemInstruction:{
+          parts:[{text:londonInstruction()}]
+        },
+        inputAudioTranscription:{
+          languageCodes:[settings.locale || 'en-GB']
+        },
+        outputAudioTranscription:{},
+        realtimeInputConfig:{
+          automaticActivityDetection:{
+            disabled:false,
+            prefixPaddingMs:120,
+            silenceDurationMs:650
+          }
+        }
+      },
+      callbacks:{
+        onopen:()=>{
+          if(liveState){
+            liveState.status='Connessione aperta · inizializzo la sessione…';
+            updateLiveUI();
+          }
+        },
+        onmessage:(message)=>{
+          if(!liveState) return;
+
+          if(message?.setupComplete){
+            if(liveState.connectTimer){
+              clearTimeout(liveState.connectTimer);
+              liveState.connectTimer=null;
+            }
+            liveState.ready=true;
+            liveState.status='Parla normalmente';
+            updateLiveUI();
+
+            try{
+              liveState.session?.sendRealtimeInput({
+                text:'Start the conversation now with one short, natural opening question.'
+              });
+            }catch(e){
+              console.error('Unable to send opening message',e);
+            }
+            return;
+          }
+
+          // Reuse the existing transcript/audio handler.
+          try{
+            handleLiveMessage(JSON.stringify(message));
+          }catch(e){
+            console.error('Live message handling error',e,message);
+          }
+        },
+        onerror:(event)=>{
+          if(!liveState) return;
+          const detail=event?.message || event?.error?.message || '';
+          liveState.status='Errore Gemini Live';
+          updateLiveUI();
+          console.error('Gemini Live SDK error',event);
+          if(detail) alert(`Gemini Live: ${detail}`);
+        },
+        onclose:(event)=>{
+          if(!liveState) return;
+
+          if(liveState.connectTimer){
+            clearTimeout(liveState.connectTimer);
+            liveState.connectTimer=null;
+          }
+
+          if(liveState.active && !liveState.stopping){
+            const code=event?.code ?? '';
+            const reason=event?.reason || '';
+            liveState.status=`Sessione chiusa${code?` · ${code}`:''}${reason?` · ${reason}`:''}`;
+            updateLiveUI();
+
+            if(!liveState.ready){
+              alert(`Gemini Live ha chiuso la connessione prima di iniziare${code?` (codice ${code})`:''}${reason?`: ${reason}`:''}.`);
+            }
+          }
+        }
+      }
+    });
+
+    liveState.session=session;
+
     processor.onaudioprocess=e=>{
-      if(!liveState?.ready || !liveState.socket || liveState.socket.readyState!==WebSocket.OPEN) return;
+      if(!liveState?.ready || !liveState.session) return;
+
       const input=e.inputBuffer.getChannelData(0);
       const pcm=downsampleToPCM16(input,ctx.sampleRate,16000);
       if(!pcm.length) return;
-      liveState.socket.send(JSON.stringify({
-        realtimeInput:{
+
+      try{
+        liveState.session.sendRealtimeInput({
           audio:{
             data:bytesToBase64(new Uint8Array(pcm.buffer)),
             mimeType:'audio/pcm;rate=16000'
           }
-        }
-      }));
+        });
+      }catch(e){
+        console.error('Audio send failed',e);
+      }
     };
-
-    liveState.status='Collegamento a Gemini Live…';
-    updateLiveUI();
-
-    const wsUrl=`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(tokenData.token)}`;
-    const ws=new WebSocket(wsUrl);
-    liveState.socket=ws;
 
     liveState.connectTimer=setTimeout(()=>{
       if(liveState?.active && !liveState.ready){
-        liveState.status='Connessione Live non completata';
+        liveState.status='Gemini non ha completato l’inizializzazione';
         updateLiveUI();
-        try{ liveState.socket?.close(); }catch{}
-        alert('Il microfono è attivo, ma Gemini Live non ha completato la connessione entro 15 secondi.');
+        alert('Gemini Live non ha completato l’inizializzazione entro 20 secondi.');
       }
-    },15000);
-
-    ws.onopen=()=>{
-      const setup={
-        setup:{
-          model:`models/${tokenData.model || 'gemini-3.8-live'}`,
-          generationConfig:{
-            responseModalities:['AUDIO'],
-            speechConfig:{
-              voiceConfig:{
-                prebuiltVoiceConfig:{
-                  voiceName:settings.voice || tokenData.voice || 'Kore'
-                }
-              }
-            }
-          },
-          systemInstruction:{parts:[{text:londonInstruction()}]},
-          inputAudioTranscription:{languageCodes:[settings.locale || 'en-GB']},
-          outputAudioTranscription:{},
-          realtimeInputConfig:{
-            automaticActivityDetection:{
-              disabled:false,
-              prefixPaddingMs:120,
-              silenceDurationMs:650
-            }
-          }
-        }
-      };
-      ws.send(JSON.stringify(setup));
-    };
-
-    const oldHandler=handleLiveMessage;
-    ws.onmessage=e=>{
-      try{
-        const m=JSON.parse(e.data);
-        if(m.setupComplete && liveState?.connectTimer){
-          clearTimeout(liveState.connectTimer);
-          liveState.connectTimer=null;
-        }
-      }catch{}
-      oldHandler(e.data);
-    };
-
-    ws.onerror=()=>{
-      if(liveState){
-        liveState.status='Errore di connessione Gemini Live';
-        updateLiveUI();
-      }
-    };
-
-    ws.onclose=e=>{
-      if(liveState?.connectTimer){
-        clearTimeout(liveState.connectTimer);
-        liveState.connectTimer=null;
-      }
-      if(liveState?.active && !liveState.stopping){
-        liveState.status=`Sessione chiusa (codice ${e.code}${e.reason?`: ${e.reason}`:''})`;
-        updateLiveUI();
-        if(!liveState.ready){
-          alert(`Gemini Live ha chiuso la connessione prima di iniziare (codice ${e.code}${e.reason?`: ${e.reason}`:''}).`);
-        }
-      }
-    };
+    },20000);
 
   }catch(err){
     const name=err?.name || '';
@@ -179,11 +250,6 @@ startLondonLive = async function startLondonLiveFixed(){
       msg='Non trovo un microfono disponibile sul dispositivo.';
     }else if(name==='NotReadableError'){
       msg='Il microfono è già in uso o non è accessibile.';
-    }
-
-    if(liveState?.connectTimer){
-      clearTimeout(liveState.connectTimer);
-      liveState.connectTimer=null;
     }
 
     await cleanupLive();
